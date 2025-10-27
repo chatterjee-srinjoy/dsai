@@ -10,5 +10,6 @@ COPY plumber.R /app/plumber.R
 # Expose the port Plumber listens on
 EXPOSE 8000
 
-# Command to run your Plumber API
-CMD ["R", "-e", "pr <- plumber::pr('app/plumber.R'); pr$run(host='0.0.0.0', port=8000)"]
+# Command to run your Plumber API,
+# using the image's built-in process.
+CMD ["/app/plumber.R"]
