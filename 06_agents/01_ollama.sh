@@ -4,8 +4,9 @@
 # Load your local paths and variables
 source .bashrc
 
+
 # If you haven't yet, let's pull this model:
-MODEL="smollm2:1.7b"  # medium model (1.7 GB)
+MODEL="smollm2:135m"  # small model, no function calling (< 200 MB)
 # Pull model of interest
 # ollama pull $MODEL
 
@@ -17,6 +18,9 @@ export OLLAMA_HOST="0.0.0.0:$PORT"
 SERVER_PID=""
 MODEL_PID=""
 
+# **important!!!**
+# Set as environmental variable total context length for the model 
+export OLLAMA_CONTEXT_LENGTH=32000 
 # Start server in background, and assign the process ID to the SERVER_PID variable
 ollama serve > /dev/null 2>&1 & SERVER_PID=$!
 # View the process ID of ollama
@@ -27,3 +31,5 @@ echo $SERVER_PID
 # kill $SERVER_PID 2>/dev/null
 # pkill -f "ollama serve" 2>/dev/null
 # pkill -f "ollama run" 2>/dev/null
+
+

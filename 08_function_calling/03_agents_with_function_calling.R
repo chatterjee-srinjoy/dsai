@@ -6,8 +6,6 @@
 require(ollamar) # for interacting with the LLM
 require(dplyr) # for data wrangling
 require(stringr) # for string operations
-require(parallel) # for parallel processing
-require(future) # for parallel processing
 
 # Select model of interest
 MODEL = "smollm2:1.7b"

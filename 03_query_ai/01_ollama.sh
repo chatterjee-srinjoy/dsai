@@ -43,12 +43,16 @@ test=$(curl -s -X POST http://localhost:$PORT/api/generate \
     }' 2>/dev/null)
 
 
+
 # install jq for json parsing
-# choco install jq 
+# https://chocolatey.org/install to install chocolatey
+# choco install jq
+
 # or for other systems... sudo apt-get install jq
 
 # Use jq to extract the response text
 echo "$test" | jq '.'
+
 
 # Extract just some parts
 echo "$test" | jq '.model, .response'

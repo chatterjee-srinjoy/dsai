@@ -1,4 +1,4 @@
-# 05_workflows.R
+# 05_series.R
 
 # This script demonstrates how to use the agent() function to build a workflow, 
 # using an as-simple-as-possible imitation of LangChain's multi-agent orchestration
@@ -11,11 +11,11 @@ require(stringr)
 # Select model of interest
 MODEL = "smollm2:1.7b"
 
-# We're going to design several archetypal workflows for agents.
+# We're going to design an archetypal series workflow for agents.
 
 
 # =============================================================================
-# LEVEL 1: SERIES AGENTS (Sequential Processing)
+# SERIES AGENTS (Sequential Processing)
 # =============================================================================
 
 

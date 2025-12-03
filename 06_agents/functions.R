@@ -67,3 +67,78 @@ agent = function(messages, model = "smollm2:1.7b", output = "text", tools = NULL
     }
 
 }
+
+agent_run = function(role, task, tools = NULL, output = "text",model = MODEL){
+  # Testing values
+  # role = role2; task = df_as_text(result1); 
+  # tools = NULL; output = "text"; model = MODEL;
+
+  # Define the messages to be sent to the agent
+  messages = create_messages(
+    create_message(role = "system", content = role),
+    create_message(role = "user", content = task)
+  )
+
+  # Run the agent
+  resp = agent(messages = messages, model = model, output = output, tools = tools)
+  return(resp)
+
+}
+
+
+#' @name df_as_text
+#' @title Convert a data.frame to a text string
+#' @description Converts a data.frame to a text string using knitr::kable().
+#' @param df The data.frame to convert to a text string.
+#' @return A text string.
+#' @export
+df_as_text = function(df){
+  tab = knitr::kable(df, format = "markdown")
+  tab = as.character(tab)
+  tab = paste0(tab, collapse = "\n")
+  return(tab)
+}
+
+
+#' @name get_shortages
+#' @title Get data on drug shortages
+#' @description Gets data on drug shortages from the FDA Drug Shortages API.
+#' @param category:str The therapeutic category of the drug.
+#' @param limit:int The maximum number of results to return.
+#' @return A data.frame of drug shortages.
+#' @export
+get_shortages = function(category = "Psychiatry", limit = 500){
+  # Testing values
+  # category = "Psychiatry"
+
+  # Create request object
+  req = request("https://api.fda.gov/drug/shortages.json") |>
+      req_headers(Accept = "application/json")  |>
+      req_method("GET") |>
+      # Sort by initial posting date, most recent first
+      req_url_query(sort="initial_posting_date:desc") |>
+      # Search for capsule medications, Psychiatric medications, and current shortages
+      req_url_query(search = paste0('dosage_form:"Capsule"+status:"Current"+therapeutic_category:"', category, '"')) |>
+      # Limit to N results
+      req_url_query(limit = limit) 
+
+
+    # Perform the request
+    resp = req |> req_perform()
+    # Parse the response as JSON
+    data = resp_body_json(resp)
+
+    # Process the data into a tidy dataframe
+    processed_data = data |> 
+      with(results) |> 
+      map_dfr(~tibble(
+        generic_name = .x$generic_name,
+        update_type = .x$update_type,
+        update_date = .x$update_date,
+        availability = .x$availability,
+        related_info = .x$related_info,
+          )
+      )  %>%
+      mutate(update_date = lubridate::mdy(update_date))
+      return(processed_data)
+}

@@ -7,6 +7,9 @@
 export PATH="$PATH:/c/Users/tmf77/.lmstudio/bin"
 alias lms='/c/Users/tmf77/.lmstudio/bin/lms.exe'
 
+export PATH="$PATH:/c/Users/tmf77/AppData/Local/Programs/Ollama"
+alias ollama='/c/Users/tmf77/AppData/Local/Programs/Ollama/ollama.exe'
+
 # Add R to your Path for this project (here's mine)
 export PATH="$PATH:/c/Program Files/R/R-4.4.1/bin"
 alias Rscript='/c/Program Files/R/R-4.4.1/bin/Rscript.exe'
