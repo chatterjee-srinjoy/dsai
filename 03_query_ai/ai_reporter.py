@@ -230,8 +230,8 @@ print("=" * 60)
 
 # Save the AI-generated report as a markdown file
 # Markdown is great for readability and works well on GitHub
-with open("03_query_ai/report.md", "w", encoding="utf-8") as f:
+with open("03_query_ai/lab_ai_report.md", "w", encoding="utf-8") as f:
     f.write(report)
 
-print("\n✅ Saved report as report.md")
+print("\n✅ Saved report as lab_ai_report.md")
 print("✅ AI Reporter complete.\n")
