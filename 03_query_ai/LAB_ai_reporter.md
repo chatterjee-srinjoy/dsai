@@ -16,29 +16,33 @@ Create a script that queries your API from [`LAB_your_good_api_query.md`](../01_
 
 ### Task 1: Prepare Data Pipeline
 
-- [ ] Use your API query script from the previous lab (or create a new one)
-- [ ] Process the API data: clean, filter, or aggregate as needed for reporting
-- [ ] Format the processed data for AI consumption (e.g., JSON, CSV, or structured text)
+- [x] Use your API query script from the previous lab (or create a new one)
+- [x] Process the API data: clean, filter, or aggregate as needed for reporting
+- [x] Format the processed data for AI consumption (e.g., JSON, CSV, or structured text)
 
 ### Task 2: Design Your AI Prompt
 
-- [ ] Decide what you want the AI to return:
+- [x] Decide what you want the AI to return:
   - Summary statistics or insights?
   - Trends or patterns?
   - Recommendations or analysis?
   - Specific format (bullets, paragraphs, tables)?
-- [ ] Write an initial prompt that includes your processed data and clear instructions
-- [ ] Test with Ollama (local or cloud) or OpenAI using your example scripts
+- [x] Write an initial prompt that includes your processed data and clear instructions
+- [x] Test with Ollama (local or cloud) or OpenAI using your example scripts
 
 ### Task 3: Iterate and Refine
 
-- [ ] Run your script and review the AI output
-- [ ] Refine your prompt based on results:
+- [x] Run your script and review the AI output
+- [x] Refine your prompt based on results:
   - Adjust length requirements (e.g., "2-3 sentences" or "brief summary")
   - Specify format (e.g., "Use bullet points" or "Write in paragraph form")
   - Clarify what content to focus on
-- [ ] Test 2-3 iterations until output is reliable and useful
-- [ ] Write a couple sentences describing your process and why it works
+- [x] Test 2-3 iterations until output is reliable and useful
+- [x] Write a couple sentences describing your process and why it works
+
+### Prompt Design Explanation
+
+My prompt went through 3 iterations. Version 1 simply asked for "a summary" of the data, which produced unfocused, lengthy output. Version 2 added explicit section headers (Overview, Key Trends, Top Concerns, Recommendations) and formatting instructions (bullet points), which gave the report much better structure. Version 3 added a 300-word length constraint and specified the target audience ("regulatory audience"), which made the output concise and professional. The key insight is that pre-aggregating data before sending it to the AI (e.g., top 10 root causes, monthly counts) reduces token usage and helps the model focus on patterns rather than raw records.
 
 ---
 
