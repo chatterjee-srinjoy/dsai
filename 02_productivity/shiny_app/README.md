@@ -1,6 +1,6 @@
-# FDA Device Recalls Dashboard
+# FDAi
 
-A Shiny web application that queries the FDA openFDA API for medical device recalls and displays them in an interactive dashboard with filtering, search, and visualizations.
+AI-powered FDA medical device recall dashboard. Queries the openFDA API, displays interactive visualizations, and generates executive reports using OpenAI.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ Rscript run.R
 
 **Install dependencies** (if needed):
 ```r
-pkgs <- c("shiny", "bslib", "httr", "jsonlite", "DT", "plotly", "dplyr")
+pkgs <- c("shiny", "bslib", "httr", "jsonlite", "DT", "plotly", "dplyr", "markdown")
 install.packages(pkgs, repos = "https://cloud.r-project.org")
 ```
 
@@ -43,6 +43,8 @@ The app will open in your default browser at `http://127.0.0.1:3838`.
 - **Visual Analytics**: 
   - Top root causes bar chart
   - Monthly recall trends line chart
+- **AI-Powered Reports**: Generate executive summaries with trends, concerns, and recommendations via OpenAI (gpt-4o-mini)
+- **Report Download**: Export AI-generated reports as Markdown files
 - **Error Handling**: Graceful handling of API errors and empty results
 - **Modern UI**: Clean, responsive interface using bslib Bootstrap theming
 
@@ -54,15 +56,18 @@ graph TB
         U1[Query Controls Card]
         U2[Data Table Card]
         U3[Analytics Card]
+        U4[AI Report Card]
     end
     subgraph Server["Server Layer"]
         S1[Reactive Values]
         S2[API Fetch Logic]
         S3[Data Transform]
         S4[Output Renderers]
+        S5[AI Report Generator]
     end
-    subgraph External["External API"]
+    subgraph External["External APIs"]
         E1[FDA openFDA API]
+        E2[OpenAI API]
     end
     
     U1 -->|User Input| S1
@@ -73,6 +78,10 @@ graph TB
     S1 --> S4
     S4 --> U2
     S4 --> U3
+    S1 --> S5
+    S5 -->|Data Summary + Prompt| E2
+    E2 -->|AI Report| S5
+    S5 --> U4
 ```
 
 ## Usage Guide
@@ -102,36 +111,52 @@ Click the **Fetch Data** button to query the FDA API. The status message will sh
   - **Top Root Causes**: Horizontal bar chart showing the most common reasons for recalls
   - **Monthly Trends**: Line chart showing recall frequency over time
 
-### 4. Full Screen Mode
+### 4. Generate AI Report
 
-Click the expand icon on the Data Table or Analytics cards to view in full screen.
+Click the **Generate Report** button in the AI Analysis Report section to get an executive summary including:
+- Overview of the recall landscape
+- Key trends and patterns
+- Top concerns
+- Actionable recommendations
+
+Reports can be downloaded as Markdown files.
+
+### 5. Full Screen Mode
+
+Click the expand icon on any card to view in full screen.
 
 ## API Requirements
 
-### Without API Key
+### FDA API Key (Optional)
 
 The app works without an API key but is subject to rate limits (40 requests per minute).
-
-### With API Key (Recommended)
 
 For higher rate limits, obtain a free API key:
 
 1. Visit [openFDA API Keys](https://open.fda.gov/apis/authentication/)
 2. Register for a free API key
-3. Create a `.env` file in the `shiny_app` folder:
+3. Add to your `.env` file:
    ```
-   API_KEY=your_api_key_here
+   API_KEY=your_fda_api_key_here
    ```
 
-The app automatically loads the API key from:
-- `../01_query_api/.env` (original query location)
-- `./.env` (local app folder)
+### OpenAI API Key (Required for AI Reports)
+
+To use the AI report generation feature:
+
+1. Get an API key from [OpenAI](https://platform.openai.com/api-keys)
+2. Add to your `.env` file:
+   ```
+   OPENAI_API_KEY=your_openai_key_here
+   ```
+
+The app loads keys from `.env` files in the app folder, parent directories, or the project root.
 
 ## Project Structure
 
 ```
 shiny_app/
-├── app.R           # Main Shiny application (UI + Server)
+├── app.R           # Main Shiny application (UI + Server + AI reporting)
 ├── run.R           # Launcher script with dependency check
 ├── DESCRIPTION     # Package metadata and dependencies
 ├── README.md       # This documentation
@@ -143,12 +168,13 @@ shiny_app/
 | Package | Purpose |
 |---------|---------|
 | `shiny` | Web application framework |
-| `bslib` | Bootstrap theming (Flatly theme) |
-| `httr` | HTTP requests to FDA API |
+| `bslib` | Bootstrap theming |
+| `httr` | HTTP requests to FDA and OpenAI APIs |
 | `jsonlite` | JSON parsing |
 | `DT` | Interactive data tables |
 | `plotly` | Interactive visualizations |
 | `dplyr` | Data manipulation |
+| `markdown` | Rendering AI report markdown as HTML |
 
 ## Troubleshooting
 
@@ -170,12 +196,17 @@ shiny_app/
 - **Status 500**: FDA server error. Try again later.
 - **Network error**: Check your internet connection.
 
+### AI Report issues
+
+- **OPENAI_API_KEY not found**: Ensure the key is in your `.env` file
+- **OpenAI API error**: Check your API key is valid and has credits
+
 ---
 
-**Based on**: [`my_good_query.R`](../../01_query_api/my_good_query.R) - Original FDA Device Recalls API query script
+**Based on**: [`my_good_query.R`](../../01_query_api/my_good_query.R) - Original FDA Device Recalls API query script | [`ai_reporter.py`](../../03_query_ai/ai_reporter.py) - Original AI reporting script
 
-**API Documentation**: [openFDA Device Recall API](https://open.fda.gov/apis/device/recall/)
+**API Documentation**: [openFDA Device Recall API](https://open.fda.gov/apis/device/recall/) | [OpenAI Chat Completions](https://platform.openai.com/docs/api-reference/chat)
 
 ---
 
-**Last Updated**: February 2026
+**Last Updated**: March 2026

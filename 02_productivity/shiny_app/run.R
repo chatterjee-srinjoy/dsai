@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Run FDA Device Recalls Shiny App
+# Run FDAi - AI-Powered FDA Device Recalls Dashboard
 # Simple launcher script - checks dependencies and runs the app
 # -----------------------------------------------------------------------------
 
@@ -7,7 +7,7 @@
 .libPaths(c("~/Library/R/arm64/4.4/library", .libPaths()))
 
 # Check and install required packages
-required_packages <- c("shiny", "bslib", "httr", "jsonlite", "DT", "plotly", "dplyr")
+required_packages <- c("shiny", "bslib", "httr", "jsonlite", "DT", "plotly", "dplyr", "markdown")
 
 missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
 

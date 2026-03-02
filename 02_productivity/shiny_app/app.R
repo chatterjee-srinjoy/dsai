@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
-# FDA Device Recalls Dashboard
-# Queries the FDA openFDA API for device recall data and displays in an
-# interactive dashboard with filtering, table, and visualizations.
+# FDAi - AI-Powered FDA Device Recalls Dashboard
+# Queries the openFDA API for device recall data, displays interactive
+# visualizations, and generates AI-powered executive reports via OpenAI.
 # -----------------------------------------------------------------------------
 
 library(shiny)
@@ -11,6 +11,7 @@ library(jsonlite)
 library(DT)
 library(plotly)
 library(dplyr)
+library(markdown)
 
 # ---- Configuration ----
 FDA_BASE_URL <- "https://api.fda.gov/device/recall.json"
@@ -31,13 +32,14 @@ CHART_COLORS <- c("#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#0d9488",
 
 # Load API key from .env file if available
 load_api_key <- function() {
-  env_path <- file.path(dirname(getwd()), "01_query_api", ".env")
-  if (file.exists(env_path)) {
-    readRenviron(env_path)
-  }
-  # Also check local .env
-  if (file.exists(".env")) {
-    readRenviron(".env")
+  env_paths <- c(
+    file.path(dirname(getwd()), "01_query_api", ".env"),
+    ".env",
+    "../../.env",
+    file.path(dirname(dirname(getwd())), ".env")
+  )
+  for (p in env_paths) {
+    if (file.exists(p)) readRenviron(p)
   }
   Sys.getenv("API_KEY")
 }
@@ -107,6 +109,125 @@ transform_recalls_data <- function(data) {
     select(all_of(existing_cols))
   
   return(result)
+}
+
+# ---- AI Report Functions ----
+
+build_data_summary <- function(df) {
+  total <- nrow(df)
+
+  root_cause_text <- ""
+  if ("root_cause_description" %in% names(df)) {
+    rc <- df %>%
+      filter(!is.na(root_cause_description), root_cause_description != "") %>%
+      count(root_cause_description, sort = TRUE) %>%
+      head(10)
+    root_cause_text <- paste(sprintf("  %s: %d", rc$root_cause_description, rc$n),
+                             collapse = "\n")
+  }
+
+  monthly_text <- ""
+  if ("event_date_initiated" %in% names(df)) {
+    monthly <- df %>%
+      mutate(month = substr(event_date_initiated, 1, 7)) %>%
+      filter(!is.na(month), month != "") %>%
+      count(month) %>%
+      arrange(month)
+    monthly_text <- paste(sprintf("  %s: %d", monthly$month, monthly$n),
+                          collapse = "\n")
+  }
+
+  firm_text <- ""
+  if ("recalling_firm" %in% names(df)) {
+    firms <- df %>%
+      filter(!is.na(recalling_firm), recalling_firm != "") %>%
+      count(recalling_firm, sort = TRUE) %>%
+      head(10)
+    firm_text <- paste(sprintf("  %s: %d", firms$recalling_firm, firms$n),
+                       collapse = "\n")
+  }
+
+  status_text <- ""
+  if ("recall_status" %in% names(df)) {
+    statuses <- df %>%
+      filter(!is.na(recall_status), recall_status != "") %>%
+      count(recall_status, sort = TRUE)
+    status_text <- paste(sprintf("  %s: %d", statuses$recall_status, statuses$n),
+                         collapse = "\n")
+  }
+
+  sample_desc <- ""
+  if ("product_description" %in% names(df)) {
+    descs <- head(df$product_description, 5)
+    descs <- sapply(descs, function(d) {
+      if (is.na(d)) return("N/A")
+      if (nchar(d) > 200) return(paste0(substr(d, 1, 200), "..."))
+      d
+    }, USE.NAMES = FALSE)
+    sample_desc <- paste(sprintf("- %s", descs), collapse = "\n")
+  }
+
+  sprintf(
+"FDA DEVICE RECALL DATA SUMMARY
+======================================
+Total Recalls: %d
+
+TOP 10 ROOT CAUSES:
+%s
+
+MONTHLY RECALL COUNTS:
+%s
+
+TOP 10 RECALLING FIRMS:
+%s
+
+RECALL STATUS BREAKDOWN:
+%s
+
+SAMPLE PRODUCT DESCRIPTIONS (first 5):
+%s", total, root_cause_text, monthly_text, firm_text, status_text, sample_desc)
+}
+
+build_ai_prompt <- function(data_summary, start_date, end_date) {
+  sprintf(
+"You are a data analyst generating a brief executive report on FDA device recalls.
+
+Based on the following FDA device recall data from %s to %s, generate a concise report with these sections:
+
+1. **Overview**: A 2-3 sentence summary of the overall recall landscape.
+2. **Key Trends**: 3-5 bullet points identifying the most notable trends (monthly patterns, common root causes, frequent recalling firms).
+3. **Top Concerns**: 2-3 bullet points highlighting the most significant root causes or product categories that warrant attention.
+4. **Recommendations**: 2-3 bullet points suggesting actions for device manufacturers or regulators based on the data.
+
+Keep the total report under 300 words. Use clear, professional language suitable for a regulatory audience.
+
+DATA:
+%s", start_date, end_date, data_summary)
+}
+
+call_openai <- function(prompt, api_key) {
+  body <- list(
+    model = "gpt-4o-mini",
+    messages = list(list(role = "user", content = prompt))
+  )
+
+  response <- POST(
+    "https://api.openai.com/v1/chat/completions",
+    add_headers(
+      "Authorization" = paste("Bearer", api_key),
+      "Content-Type" = "application/json"
+    ),
+    body = toJSON(body, auto_unbox = TRUE),
+    encode = "raw"
+  )
+
+  if (http_error(response)) {
+    err <- rawToChar(response$content)
+    stop(paste("OpenAI API error (", status_code(response), "):", err))
+  }
+
+  result <- fromJSON(rawToChar(response$content))
+  result$choices$message$content[[1]]
 }
 
 # ---- Custom CSS ----
@@ -233,6 +354,38 @@ table.dataTable thead th {
   font-weight: 600;
   color: #475569;
 }
+
+/* AI Report styling */
+.ai-report {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: #1e293b;
+  padding: 0.5rem;
+}
+.ai-report h1, .ai-report h2, .ai-report h3, .ai-report h4 {
+  color: #1e40af;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+.ai-report ul { padding-left: 1.5rem; }
+.ai-report li { margin-bottom: 0.5rem; }
+.ai-report strong { color: #0f172a; }
+.ai-report p { margin-bottom: 0.75rem; }
+.btn-ai {
+  background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+  border: none;
+  color: white;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+.btn-ai:hover {
+  background: linear-gradient(135deg, #6d28d9 0%, #9333ea 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(124, 58, 237, 0.3);
+  color: white;
+}
 "
 
 # ---- UI ----
@@ -250,7 +403,7 @@ ui <- page_fillable(
     heading_font = font_google("Inter"),
     "border-radius" = "0.5rem"
   ),
-  title = "FDA Device Recalls Dashboard",
+  title = "FDAi",
   padding = 20,
   
   # Inject custom CSS
@@ -259,8 +412,8 @@ ui <- page_fillable(
   # Header with gradient
   div(
     class = "dashboard-header text-center",
-    h1(icon("shield-virus"), " FDA Device Recalls Dashboard"),
-    p("Explore medical device recall data from the openFDA API")
+    h1(icon("shield-virus"), " FDAi"),
+    p("AI-powered insights from FDA medical device recall data")
   ),
   
   # Main layout - responsive grid
@@ -355,7 +508,7 @@ ui <- page_fillable(
         ),
         card_body(
           style = "padding: 0.5rem;",
-          plotlyOutput("root_cause_plot", height = "200px")
+          plotlyOutput("root_cause_plot", height = "280px")
         ),
         full_screen = TRUE
       ),
@@ -376,6 +529,24 @@ ui <- page_fillable(
     )
   ),
   
+  # Row 4: AI Analysis Report
+  card(
+    card_header(
+      class = "bg-white",
+      div(class = "d-flex align-items-center justify-content-between",
+          div(icon("robot", class = "me-2"),
+              span("AI Analysis Report",
+                   style = "color: #7c3aed; font-weight: 600;")),
+          actionButton("generate_report",
+                       tags$span(icon("wand-magic-sparkles"), " Generate Report"),
+                       class = "btn-ai btn-sm"))
+    ),
+    card_body(
+      uiOutput("ai_report_output")
+    ),
+    full_screen = TRUE
+  ),
+  
   # Footer
   div(
     class = "text-center text-muted mt-4 pt-3",
@@ -384,7 +555,7 @@ ui <- page_fillable(
       "Data source: ",
       tags$a(href = "https://open.fda.gov/apis/device/recall/", 
              target = "_blank", "openFDA Device Recall API"),
-      " | Built with R Shiny"
+      " | Built with R Shiny + OpenAI"
     )
   )
 )
@@ -392,15 +563,19 @@ ui <- page_fillable(
 # ---- Server ----
 server <- function(input, output, session) {
   
-  # Reactive value to store recall data
+  # Reactive values
   recalls_df <- reactiveVal(NULL)
+  raw_recalls_df <- reactiveVal(NULL)
   api_key <- reactiveVal(NULL)
+  openai_key <- reactiveVal(NULL)
   total_available <- reactiveVal(0)
+  report_text <- reactiveVal(NULL)
 
-  # Load API key on startup
+  # Load API keys on startup
   observe({
     key <- load_api_key()
     api_key(key)
+    openai_key(Sys.getenv("OPENAI_API_KEY"))
   })
   
   # Record count display
@@ -495,6 +670,8 @@ server <- function(input, output, session) {
       
       if (is.null(df) || nrow(df) == 0) {
         recalls_df(NULL)
+        raw_recalls_df(NULL)
+        report_text(NULL)
         total_available(0)
         output$status <- renderUI({
           div(class = "alert alert-warning mt-3",
@@ -503,6 +680,8 @@ server <- function(input, output, session) {
         })
       } else {
         recalls_df(df)
+        raw_recalls_df(data$results)
+        report_text(NULL)
         total_available(data$meta$results$total)
         output$status <- renderUI({
           div(class = "alert alert-success mt-3",
@@ -513,6 +692,8 @@ server <- function(input, output, session) {
       
     }, error = function(e) {
       recalls_df(NULL)
+      raw_recalls_df(NULL)
+      report_text(NULL)
       total_available(0)
       output$status <- renderUI({
         div(class = "alert alert-danger mt-3",
@@ -600,54 +781,83 @@ server <- function(input, output, session) {
       )
     }
     
-    # Count root causes (top 6 for compact view)
     root_counts <- df %>%
       mutate(root_cause = ifelse(is.na(root_cause_description) | root_cause_description == "", 
                                   "Not Specified", root_cause_description)) %>%
       count(root_cause, name = "count", sort = TRUE) %>%
       head(6) %>%
-      mutate(
-        pct = round(100 * count / sum(count), 1),
-        # Truncate long labels
-        root_cause_short = ifelse(nchar(root_cause) > 25, 
-                                   paste0(substr(root_cause, 1, 22), "..."), 
-                                   root_cause)
-      )
-    
-    # Create horizontal bar chart with gradient colors
+      mutate(pct = round(100 * count / sum(count), 1)) %>%
+      arrange(count)
+
+    # Wrap long labels into multiple lines (~20 chars wide)
+    root_counts$root_cause_wrap <- sapply(root_counts$root_cause, function(lbl) {
+      words <- strsplit(lbl, " ")[[1]]
+      lines <- character(0)
+      current <- words[1]
+      for (w in words[-1]) {
+        if (nchar(paste(current, w)) <= 20) {
+          current <- paste(current, w)
+        } else {
+          lines <- c(lines, current)
+          current <- w
+        }
+      }
+      lines <- c(lines, current)
+      paste(lines, collapse = "<br>")
+    }, USE.NAMES = FALSE)
+
+    root_counts$root_cause_f <- factor(root_counts$root_cause_wrap,
+                                       levels = root_counts$root_cause_wrap)
+
+    n <- nrow(root_counts)
+    bar_colors <- colorRampPalette(c("#93c5fd", "#3b82f6", "#1e3a8a"))(n)
+    text_colors <- colorRampPalette(c("#2563eb", "#1d4ed8", "#1e3a8a"))(n)
+
     plot_ly(
       root_counts,
-      y = ~reorder(root_cause_short, count),
+      y = ~root_cause_f,
       x = ~count,
       type = "bar",
       orientation = "h",
       marker = list(
-        color = ~count,
-        colorscale = list(c(0, "#60a5fa"), c(1, "#1e40af")),
-        line = list(color = "white", width = 1)
+        color = bar_colors,
+        line = list(color = "rgba(255,255,255,0.4)", width = 1.5),
+        cornerradius = 5
       ),
-      text = ~paste0(count, " (", pct, "%)"),
+      text = ~paste0(count, "  (", pct, "%)"),
       textposition = "outside",
+      textfont = list(size = 14, color = text_colors,
+                      family = "Inter, system-ui, sans-serif"),
       hovertemplate = paste0(
-        "<b>%{y}</b><br>",
-        "Recalls: %{x}<br>",
+        "<b style='font-size:14px'>%{y}</b><br>",
+        "<span style='font-size:13px'>Recalls: %{x}</span><br>",
         "<extra></extra>"
+      ),
+      hoverlabel = list(
+        bgcolor = "#1e293b",
+        bordercolor = "rgba(255,255,255,0.15)",
+        font = list(size = 13, color = "white", family = "Inter, system-ui, sans-serif")
       )
     ) %>%
       layout(
         xaxis = list(
           title = "",
           showgrid = TRUE,
-          gridcolor = "#f1f5f9",
-          zeroline = FALSE
+          gridcolor = "rgba(226,232,240,0.4)",
+          gridwidth = 1,
+          zeroline = FALSE,
+          tickfont = list(size = 11, color = "#94a3b8", family = "Inter, system-ui, sans-serif")
         ),
         yaxis = list(
           title = "",
-          tickfont = list(size = 10, color = "#475569")
+          tickfont = list(size = 14, color = "#0f172a",
+                          family = "Inter, system-ui, sans-serif"),
+          automargin = TRUE
         ),
-        margin = list(l = 120, r = 50, t = 10, b = 30),
+        margin = list(l = 10, r = 70, t = 10, b = 30),
         paper_bgcolor = "rgba(0,0,0,0)",
-        plot_bgcolor = "rgba(0,0,0,0)"
+        plot_bgcolor = "rgba(0,0,0,0)",
+        bargap = 0.3
       ) %>%
       config(displayModeBar = FALSE)
   })
@@ -725,13 +935,13 @@ server <- function(input, output, session) {
         xaxis = list(
           title = "",
           tickangle = -45,
-          tickfont = list(size = 9, color = "#475569"),
+          tickfont = list(size = 13, color = "#0f172a", family = "Inter, system-ui, sans-serif"),
           showgrid = FALSE,
           zeroline = FALSE
         ),
         yaxis = list(
           title = "",
-          tickfont = list(size = 10, color = "#475569"),
+          tickfont = list(size = 13, color = "#0f172a", family = "Inter, system-ui, sans-serif"),
           showgrid = TRUE,
           gridcolor = "#f1f5f9",
           zeroline = FALSE
@@ -742,6 +952,79 @@ server <- function(input, output, session) {
       ) %>%
       config(displayModeBar = FALSE)
   })
+
+  # ---- AI Report ----
+
+  observeEvent(input$generate_report, {
+    raw_df <- raw_recalls_df()
+
+    if (is.null(raw_df) || nrow(raw_df) == 0) {
+      report_text(NULL)
+      showNotification("Please fetch recall data first.", type = "warning")
+      return()
+    }
+
+    oai_key <- openai_key()
+    if (is.null(oai_key) || nchar(oai_key) == 0) {
+      showNotification("OPENAI_API_KEY not found in .env file.", type = "error",
+                       duration = 8)
+      return()
+    }
+
+    withProgress(message = "Generating AI report...", value = 0, {
+      tryCatch({
+        setProgress(0.2, detail = "Building data summary...")
+        data_summary <- build_data_summary(raw_df)
+
+        setProgress(0.4, detail = "Sending to OpenAI...")
+        prompt <- build_ai_prompt(
+          data_summary,
+          format(input$start_date, "%Y-%m-%d"),
+          format(input$end_date, "%Y-%m-%d")
+        )
+
+        report <- call_openai(prompt, oai_key)
+        setProgress(1, detail = "Done!")
+        report_text(report)
+        showNotification("AI report generated!", type = "message")
+      }, error = function(e) {
+        report_text(NULL)
+        showNotification(paste("Report error:", conditionMessage(e)),
+                         type = "error", duration = 10)
+      })
+    })
+  })
+
+  output$ai_report_output <- renderUI({
+    report <- report_text()
+    if (is.null(report)) {
+      div(class = "text-center text-muted py-4",
+          icon("robot", class = "fa-2x d-block mx-auto mb-3",
+               style = "color: #c4b5fd;"),
+          p("Load recall data, then click ",
+            tags$strong("Generate Report"),
+            " to get an AI-powered analysis of trends and recommendations.",
+            style = "font-size: 0.95rem;"))
+    } else {
+      tagList(
+        div(class = "ai-report",
+            HTML(markdownToHTML(text = report, fragment.only = TRUE))),
+        div(class = "text-end mt-3",
+            downloadButton("download_report",
+                           tagList(icon("download"), " Download Report (.md)"),
+                           class = "btn btn-outline-secondary btn-sm"))
+      )
+    }
+  })
+
+  output$download_report <- downloadHandler(
+    filename = function() {
+      paste0("fda_recall_report_", Sys.Date(), ".md")
+    },
+    content = function(file) {
+      writeLines(report_text(), file)
+    }
+  )
 }
 
 # ---- Run App ----

@@ -1,9 +1,9 @@
-Package: fda-recalls-dashboard
-Title: FDA Device Recalls Dashboard
-Version: 1.0.0
-Description: A Shiny web application that queries the FDA openFDA API 
-    for medical device recalls and displays them in an interactive dashboard
-    with filtering, search, and visualizations.
+Package: fdai
+Title: FDAi - AI-Powered FDA Device Recalls Dashboard
+Version: 2.0.0
+Description: A Shiny web application that queries the openFDA API for medical
+    device recalls, displays interactive visualizations, and generates
+    AI-powered executive reports via OpenAI.
 Authors@R: person("Student", role = c("aut", "cre"))
 Depends:
     R (>= 4.0.0)
@@ -14,5 +14,6 @@ Imports:
     jsonlite (>= 1.8.0),
     DT (>= 0.27),
     plotly (>= 4.10.0),
-    dplyr (>= 1.1.0)
+    dplyr (>= 1.1.0),
+    markdown (>= 1.1)
 License: MIT
