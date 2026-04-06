@@ -1,7 +1,6 @@
 # lab_multi_agent_with_tools.py
 # Multi-Agent System with Tools
 # LAB: Multi-Agent with Function Calling
-# Srinjoy
 
 # This script builds a 2-agent workflow where Agent 1 uses a custom tool to
 # fetch recent earthquake data from the USGS API, and Agent 2 analyzes the
