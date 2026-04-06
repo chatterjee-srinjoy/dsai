@@ -148,3 +148,68 @@ print(manual_table)
 print()
 
 # Note: We can use the agent() function to rapidly build and test out agents with or without tools.
+
+# 6. NEW TOOL: CALCULATE AVERAGE ###################################
+
+# Define a new tool function that calculates the average of a list of numbers
+def calculate_average(numbers):
+    """
+    Calculate the average (mean) of a list of numbers.
+    
+    Parameters:
+    -----------
+    numbers : list
+        A list of numbers to average
+    
+    Returns:
+    --------
+    float
+        The arithmetic mean of the input numbers
+    """
+    if not numbers: return 0
+    return sum(numbers) / len(numbers)
+
+# Register the function in the functions module's namespace
+# The agent() wrapper uses globals() to find tool functions,
+# which searches within functions.py — so we inject our function there.
+import functions as _fn
+_fn.calculate_average = calculate_average
+
+# Define the tool metadata for calculate_average
+# This tells the LLM what the function does and what parameters it expects
+tool_calculate_average = {
+    "type": "function",
+    "function": {
+        "name": "calculate_average",
+        "description": "Calculate the average (mean) of a list of numbers",
+        "parameters": {
+            "type": "object",
+            "required": ["numbers"],
+            "properties": {
+                "numbers": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "description": "A list of numbers to calculate the average of"
+                }
+            }
+        }
+    }
+}
+
+# 7. TEST THE NEW TOOL ###################################
+
+# Test the calculate_average tool with the agent wrapper
+# The agent should recognize it needs to call calculate_average
+messages = [
+    {"role": "user", "content": "Calculate the average of the numbers 10, 20, 30, 40, and 50."}
+]
+
+resp3 = agent(messages=messages, model=MODEL, output="tools", tools=[tool_calculate_average])
+print("🔧 Calculate Average Tool Result:")
+print(resp3)
+print()
+
+# Display the computed average from the tool call output
+if isinstance(resp3, list) and len(resp3) > 0:
+    print(f"Average: {resp3[0].get('output', 'No output')}")
+    print()

@@ -51,6 +51,26 @@ def add_two_numbers(x, y):
     """
     return x + y
 
+
+# Define a second function to use as a tool
+def multiply_numbers(x, y):
+    """
+    Multiply two numbers together.
+    
+    Parameters:
+    -----------
+    x : float
+        First number
+    y : float
+        Second number
+    
+    Returns:
+    --------
+    float
+        Product of x and y
+    """
+    return x * y
+
 # 2. DEFINE TOOL METADATA ###################################
 
 # Define the tool metadata as a dictionary
@@ -77,6 +97,30 @@ tool_add_two_numbers = {
     }
 }
 
+# Tool metadata for multiply_numbers
+# Same structure as add_two_numbers, but describing the multiplication function
+tool_multiply_numbers = {
+    "type": "function",
+    "function": {
+        "name": "multiply_numbers",
+        "description": "Multiply two numbers",
+        "parameters": {
+            "type": "object",
+            "required": ["x", "y"],
+            "properties": {
+                "x": {
+                    "type": "number",
+                    "description": "first number"
+                },
+                "y": {
+                    "type": "number",
+                    "description": "second number"
+                }
+            }
+        }
+    }
+}
+
 # 3. CREATE CHAT REQUEST WITH TOOLS ###################################
 
 # Create a simple chat history with a user question that will require the tool
@@ -84,11 +128,14 @@ messages = [
     {"role": "user", "content": "What is 3 + 2?"}
 ]
 
+# Both tools are available to the LLM in a single list
+all_tools = [tool_add_two_numbers, tool_multiply_numbers]
+
 # Build the request body with tools
 body = {
     "model": MODEL,
     "messages": messages,
-    "tools": [tool_add_two_numbers],
+    "tools": all_tools,
     "stream": False
 }
 
@@ -107,7 +154,9 @@ if "tool_calls" in result.get("message", {}):
     # Execute each tool call
     for tool_call in tool_calls:
         func_name = tool_call["function"]["name"]
-        func_args = json.loads(tool_call["function"]["arguments"])
+        # Arguments may be a dict or JSON string depending on Ollama version
+        args = tool_call["function"]["arguments"]
+        func_args = json.loads(args) if isinstance(args, str) else args
         
         # Get the function from globals and execute it
         func = globals().get(func_name)
@@ -117,3 +166,39 @@ if "tool_calls" in result.get("message", {}):
             tool_call["output"] = output
 else:
     print("No tool calls in response")
+
+# 5. TEST THE MULTIPLY TOOL ###################################
+
+# Now test with a multiplication question
+# The LLM should pick multiply_numbers instead of add_two_numbers
+messages_multiply = [
+    {"role": "user", "content": "What is 7 times 6?"}
+]
+
+body_multiply = {
+    "model": MODEL,
+    "messages": messages_multiply,
+    "tools": all_tools,
+    "stream": False
+}
+
+response_multiply = requests.post(CHAT_URL, json=body_multiply)
+response_multiply.raise_for_status()
+result_multiply = response_multiply.json()
+
+# Execute the multiply tool call
+if "tool_calls" in result_multiply.get("message", {}):
+    tool_calls_multiply = result_multiply["message"]["tool_calls"]
+    
+    for tool_call in tool_calls_multiply:
+        func_name = tool_call["function"]["name"]
+        args = tool_call["function"]["arguments"]
+        func_args = json.loads(args) if isinstance(args, str) else args
+        
+        func = globals().get(func_name)
+        if func:
+            output = func(**func_args)
+            print(f"Multiply tool call result: {output}")
+            tool_call["output"] = output
+else:
+    print("No tool calls in multiply response")
