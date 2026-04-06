@@ -154,9 +154,10 @@ if "tool_calls" in result.get("message", {}):
     # Execute each tool call
     for tool_call in tool_calls:
         func_name = tool_call["function"]["name"]
-        # Arguments may be a dict or JSON string depending on Ollama version
-        args = tool_call["function"]["arguments"]
-        func_args = json.loads(args) if isinstance(args, str) else args
+        raw_args = tool_call["function"].get("arguments", {})
+        # Ollama may return tool arguments either as a JSON string or as an already-parsed dict.
+        # The R version uses native structured objects, so we mirror that behavior here.
+        func_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
         
         # Get the function from globals and execute it
         func = globals().get(func_name)

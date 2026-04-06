@@ -18,12 +18,12 @@ url = paste0("http://localhost:", PORT, "/api/generate")
 
 # Construct the request body as a list
 body <- list(
-  model = "gemma3:latest", # Model name
+  model = "smollm2:1.7b", # Model name
   prompt = "Is model working?",        # User prompt
   stream = FALSE       # Non-streaming response
 )
 
-# Build and send the POST request to the LM Studio REST API
+# Build and send the POST request to the REST API
 res <- request(url) %>%
   req_body_json(body) %>%   # Attach the JSON body
   req_method("POST") %>%   # Set HTTP method
