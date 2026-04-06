@@ -42,7 +42,25 @@ TOOLS = [
             },
             "required": ["dataset_name"],
         },
-    }
+    },
+    {
+        "name": "filter_dataset",
+        "description": "Filter rows from a dataset using a pandas query expression and return matching rows as JSON.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "dataset_name": {
+                    "type": "string",
+                    "description": "Dataset to filter. Options: 'mtcars' or 'iris'.",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "A pandas query expression, e.g. 'cyl == 6' or 'Species == \"setosa\"'.",
+                },
+            },
+            "required": ["dataset_name", "query"],
+        },
+    },
 ]
 
 # ── Tool logic (same datasets as R: mtcars, iris via Rdatasets CSV) ──
@@ -65,6 +83,16 @@ def run_tool(name: str, args: dict) -> str:
         summary.index.name = "variable"
         summary.columns = ["mean", "sd", "min", "max"]
         return summary.reset_index().to_json(orient="records", indent=2)
+
+    if name == "filter_dataset":
+        nm = args.get("dataset_name")
+        if nm not in DATASETS:
+            raise ValueError(f"Unknown dataset: '{nm}' — choose 'mtcars' or 'iris'")
+        query_expr = args.get("query", "")
+        filtered = DATASETS[nm].query(query_expr)
+        if filtered.empty:
+            return json.dumps({"message": f"No rows matched query: {query_expr}"})
+        return filtered.head(20).to_json(orient="records", indent=2)
 
     raise ValueError(f"Unknown tool: {name}")
 
