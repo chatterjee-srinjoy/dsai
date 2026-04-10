@@ -1,19 +1,21 @@
 # lab_multi_agent_with_tools.py
-# Multi-Agent System with Tools
+# Multi-Agent System with Tools — FDA Device Recalls
 # LAB: Multi-Agent with Function Calling
+# Srinjoy
 
 # This script builds a 2-agent workflow where Agent 1 uses a custom tool to
-# fetch recent earthquake data from the USGS API, and Agent 2 analyzes the
-# data and writes a summary report.
+# fetch FDA device recall data from the openFDA API, and Agent 2 analyzes
+# the data and writes a summary report.
 
 # 0. SETUP ###################################
 
 ## 0.1 Load Packages #################################
 
-import requests  # for HTTP requests
-import json      # for working with JSON
-import pandas as pd  # for data manipulation
-from datetime import datetime, timedelta, timezone  # for date calculations
+import os           # for environment variables
+import requests     # for HTTP requests
+import json         # for working with JSON
+import pandas as pd # for data manipulation
+from dotenv import load_dotenv  # for loading .env file
 
 ## 0.2 Load Functions #################################
 
@@ -25,63 +27,55 @@ from functions import agent_run, df_as_text
 # Select model of interest
 MODEL = "smollm2:1.7b"
 
+# Load FDA API key from .env (optional; API works without it but rate-limited)
+load_dotenv()
+FDA_API_KEY = os.getenv("API_KEY", "")
+
 # 1. DEFINE CUSTOM TOOL FUNCTION ###################################
 
-# This function fetches recent earthquake data from the USGS Earthquake API.
-# The USGS API is free and requires no authentication.
-# Docs: https://earthquake.usgs.gov/fdsnws/event/1/
+# This function queries the openFDA Device Recall API.
+# The API is free; an API key raises the rate limit.
+# Docs: https://open.fda.gov/apis/device/recall/
 
-def get_earthquakes(min_magnitude=4.0, days_back=7):
+def get_fda_recalls(year=2024, limit=20):
     """
-    Fetch recent earthquake data from the USGS Earthquake Hazards API.
+    Fetch device recall data from the openFDA Device Recall API.
 
     Parameters:
     -----------
-    min_magnitude : float
-        Minimum earthquake magnitude to include (default: 4.0)
-    days_back : int
-        Number of days back to search (default: 7)
+    year : int
+        The year to search for recalls (default: 2024)
+    limit : int
+        Maximum number of results to return (default: 20, max: 1000)
 
     Returns:
     --------
     pandas.DataFrame
-        A DataFrame of recent earthquakes with magnitude, location, and time
+        A DataFrame of device recalls with key fields
     """
 
-    # USGS GeoJSON endpoint
-    url = "https://earthquake.usgs.gov/fdsnws/event/1/query"
+    url = "https://api.fda.gov/device/recall.json"
 
-    # Calculate the start date from today
-    end_date = datetime.now(timezone.utc)
-    start_date = end_date - timedelta(days=days_back)
-
-    # Build query parameters
     params = {
-        "format": "geojson",
-        "starttime": start_date.strftime("%Y-%m-%d"),
-        "endtime": end_date.strftime("%Y-%m-%d"),
-        "minmagnitude": min_magnitude,
-        "orderby": "magnitude",
-        "limit": 20
+        "search": f"event_date_initiated:[{year}-01-01 TO {year}-12-31]",
+        "limit": min(limit, 1000)
     }
+    if FDA_API_KEY:
+        params["api_key"] = FDA_API_KEY
 
-    # Fetch data from the USGS API
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=30)
     response.raise_for_status()
     data = response.json()
 
-    # Extract earthquake features into a list of dicts
     records = []
-    for feature in data.get("features", []):
-        props = feature["properties"]
-        coords = feature["geometry"]["coordinates"]
+    for item in data.get("results", []):
         records.append({
-            "magnitude": props.get("mag"),
-            "location": props.get("place", ""),
-            "time": datetime.fromtimestamp(props["time"] / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-            "depth_km": round(coords[2], 1),
-            "alert_level": props.get("alert", "none"),
-            "tsunami_warning": bool(props.get("tsunami", 0))
+            "recall_number": item.get("recall_number", ""),
+            "date": item.get("event_date_initiated", ""),
+            "firm": item.get("recalling_firm", ""),
+            "root_cause": item.get("root_cause_description", ""),
+            "product_code": item.get("product_code", ""),
+            "status": item.get("recall_status", "")
         })
 
     df = pd.DataFrame(records)
@@ -92,27 +86,31 @@ def get_earthquakes(min_magnitude=4.0, days_back=7):
 # The agent() wrapper in functions.py uses globals() to look up tool
 # functions. We inject our function into that module so it can be found.
 import functions as _fn
-_fn.get_earthquakes = get_earthquakes
+_fn.get_fda_recalls = get_fda_recalls
 
 # 3. DEFINE TOOL METADATA ###################################
 
 # Tool metadata tells the LLM what the function does and what arguments it expects
-tool_get_earthquakes = {
+tool_get_fda_recalls = {
     "type": "function",
     "function": {
-        "name": "get_earthquakes",
-        "description": "Fetch recent earthquake data from the USGS Earthquake Hazards API. Returns a table of recent earthquakes with magnitude, location, time, depth, alert level, and tsunami warning status.",
+        "name": "get_fda_recalls",
+        "description": (
+            "Fetch device recall data from the openFDA Device Recall API. "
+            "Returns a table of recalls with recall number, date, firm, "
+            "root cause, product code, and status."
+        ),
         "parameters": {
             "type": "object",
-            "required": ["min_magnitude", "days_back"],
+            "required": ["year", "limit"],
             "properties": {
-                "min_magnitude": {
+                "year": {
                     "type": "number",
-                    "description": "Minimum earthquake magnitude to include (e.g. 4.0 for significant quakes, 2.5 for moderate)"
+                    "description": "The year to search for recalls (e.g. 2024)"
                 },
-                "days_back": {
+                "limit": {
                     "type": "number",
-                    "description": "Number of days back to search for earthquakes (e.g. 7 for past week, 30 for past month)"
+                    "description": "Maximum number of results to return (e.g. 20 for a sample, 1000 for all available)"
                 }
             }
         }
@@ -122,36 +120,42 @@ tool_get_earthquakes = {
 # 4. MULTI-AGENT WORKFLOW ###################################
 
 # Agent 1: Data Fetcher (with tools)
-# This agent uses the get_earthquakes tool to pull recent seismic activity data
-role1 = "I fetch earthquake data from the USGS Earthquake Hazards API."
-task1 = "Get earthquake data for magnitude 4.0 and above from the past 7 days."
+# Uses the get_fda_recalls tool to pull device recall data from the FDA API
+role1 = "I fetch device recall data from the openFDA Device Recall API."
+task1 = "Get FDA device recall data for year 2024 with a limit of 20 records."
 
-print("🌍 Agent 1: Fetching earthquake data...")
-result1 = agent_run(role=role1, task=task1, model=MODEL, tools=[tool_get_earthquakes])
+print("📡 Agent 1: Fetching FDA device recall data...")
+result1 = agent_run(role=role1, task=task1, model=MODEL, tools=[tool_get_fda_recalls])
 
-# result1 is the DataFrame returned by the get_earthquakes tool
-# Convert it to a markdown table string for the next agent
+# result1 is the DataFrame returned by the get_fda_recalls tool
 result1_text = df_as_text(result1)
-print(f"  Retrieved {len(result1)} earthquake records.\n")
+print(f"   ✅ Retrieved {len(result1)} recall records.\n")
 print(result1_text)
 print()
 
 # Agent 2: Report Writer (no tools)
-# This agent receives the earthquake table and writes a short analysis
-role2 = "I am a seismology analyst. I analyze earthquake data and write a concise report summarizing the key findings, including the strongest quakes, geographic patterns, and any tsunami warnings."
-task2 = f"Analyze the following recent earthquake data and write a brief summary report:\n\n{result1_text}"
+# Receives the recall table and writes a short analysis
+role2 = (
+    "You are an FDA regulatory analyst. Analyze the device recall data and write "
+    "a concise report summarizing: 1) the most common root causes, 2) which firms "
+    "appear most frequently, and 3) any patterns in timing or status. "
+    "Use bullet points. Keep under 200 words."
+)
+task2 = f"Analyze the following FDA device recall data and write a brief summary:\n\n{result1_text}"
 
-print("📝 Agent 2: Writing earthquake analysis report...")
+print("📝 Agent 2: Writing recall analysis report...")
 result2 = agent_run(role=role2, task=task2, model=MODEL, output="text", tools=None)
 
 # 5. VIEW RESULTS ###################################
 
 print("\n" + "=" * 60)
-print("📊 AGENT 1 — Earthquake Data (Top 5)")
+print("📊 AGENT 1 — FDA Recall Data (Top 10)")
 print("=" * 60)
-print(result1.head().to_string(index=False))
+print(result1.head(10).to_string(index=False))
 
 print("\n" + "=" * 60)
 print("📰 AGENT 2 — Analysis Report")
 print("=" * 60)
 print(result2)
+
+print("\n✅ Multi-agent workflow with tools complete.")
